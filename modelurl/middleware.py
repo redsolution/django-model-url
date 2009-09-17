@@ -1,18 +1,7 @@
 import re
 from django.utils.safestring import mark_safe
 
-#PATTERN = re.compile(r'{@\s*?(\S+?)\s*?(\d{1,9})\s*?@}')
-#
-#class CsrfMiddleware(object):
-#    def process_response(self, request, response):
-#        def add_csrf_field(match):
-#            return mark_safe("asd<a>s</a>d")
-#
-#        # Modify any POST forms
-#        response.content = PATTERN.sub(add_csrf_field, response.content)
-#        return response
-
-PATTERN = re.compile(r'{@\s*?(\S+?)\s*?(\d{1,9})\s*?@}')
+PATTERN = re.compile(r'{@\s*(\S+)\s*(\d{1,10})\s*(\S*)\s*@}')
 
 def import_model(path):
     i = path.rfind('.')
@@ -25,15 +14,16 @@ def import_model(path):
 class ModelUrlMiddleware(object):
     def process_response(self, request, response):
         def repl(match):
-            model, id = match.groups()
+            model, id, function = match.groups()
             model = import_model(model)
             id = int(id)
             try:
                 obj = model.objects.get(pk=id)
             except model.DoesNotExist:
                 return mark_safe('')
-            url = obj.get_absolute_url()
-            print repr(url)
-            return mark_safe("asd<a>s</a>d")
+            if not function:
+                function = 'get_absolute_url'
+            url = getattr(obj, function)()
+            return mark_safe(url.encode('utf-8'))
         response.content = PATTERN.sub(repl, response.content)
         return response
