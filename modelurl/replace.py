@@ -3,9 +3,10 @@ Classes to replace urls with macros.
 """
 
 import re
+import threading
 from modelurl.importpath import importpath
 from modelurl.threadmethod import threadmethod
-from modelurl.urlparse import split, expand
+from modelurl.urlmethods import urlsplit, urljoin, urllocal
 from modelurl.register import local
 from modelurl.middleware import MARCO_RE
 from modelurl.utils import generate_marco
@@ -15,6 +16,7 @@ from django.contrib.sites.models import Site
 from django.core.urlresolvers import RegexURLResolver
 from django.http import QueryDict
 from django.test.client import Client
+from django.template import Template
 
 
 class ReplaceException(Exception):
@@ -153,19 +155,45 @@ class ReplaceByDict(BaseReplace):
         return self.get_regexp().sub(replace, value)
 
 
+# Create local variable for all threads
+local = threading.local()
+
+def render(func):
+    def wrapper(self, context):
+        if hasattr(local, 'modelurl_object'):
+            # We don`t want to render content if required object was found
+            # for this thread.  
+            return ''
+        if hasattr(local, 'modelurl_object_name'):
+            # We want to get object for modelurl if object_name was specified
+            # for this thread.
+            try:
+                local.modelurl_object = context[local.modelurl_object_name]
+            except KeyError:
+                # Just skip it, may be we get it later.
+                pass
+        return func(self, context)
+    return wrapper
+
+lock = threading.Lock()
+
+lock.acquire()
+if not hasattr(Template, 'render_by_model_url'):
+    # Register another render function to provide ReplaceByView
+    Template.render = render(Template.render)
+    setattr(Template, 'render_by_model_url', True)
+lock.release()
+
 @threadmethod()
-def object_from_view(client, path, data, object_name):
+def object_from_view(path, query, object_name):
     local.modelurl_object_name = object_name
-#    try:
-    request = client.get(path, data)
-        # Fix: check request.status_code
-#    except Exception:
-#        pass
+    response = urllocal_response(path, query)
+    if response.status_code != 200:
+        raise DoesNotFoundException
     try:
         return local.modelurl_object
     except AttributeError:
         raise DoesNotFoundException
-
 
 class ReplaceByView(BaseReplace):
     """
@@ -186,13 +214,12 @@ class ReplaceByView(BaseReplace):
             sites = [site.domain for site in Site.objects.all()]
         self.sites = sites
         self.send_query = send_query
-        self.client = Client()
 
     @silentmethod
     def url(self, value):
         if MARCO_RE.match(value):
             raise AlreadyMacroException
-        scheme, authority, path, query, fragment = split(value)
+        scheme, authority, path, query, fragment = urlsplit(value)
         if not scheme and not authority and not path:
             raise NoPathException
         if (scheme and scheme.lower() not in self.SERVER_SCHEMES) or\
@@ -205,11 +232,10 @@ class ReplaceByView(BaseReplace):
         except KeyError:
             raise DoesNotFoundException
         if self.send_query:
-            data = QueryDict(query)
-            query = None
+            send_query = query
         else:
-            data = {}
-        obj = object_from_view(self.client, path, data, object_name)
+            send_query = ''
+        obj = object_from_view(path, send_query, object_name)
         path = generate_marco(obj.__class__, obj.id)
-        value = expand(None, None, path, query, fragment)
+        value = urljoin(None, None, path, query, fragment)
         return value
