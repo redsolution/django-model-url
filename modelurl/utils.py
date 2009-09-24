@@ -8,22 +8,28 @@ from importpath import importpath
 
 from urlmethods import urlsplit, urljoin, local_response
 from urlmethods.threadmethod import threadmethod
-from middleware import MARCO_RE
+from middleware import MACRO_RE
 
 from django.conf import settings
 from django.contrib.sites.models import Site
 from django.core.urlresolvers import RegexURLResolver
 from django.template import Template
 
-def generate_marco(model, id, function=None):
+def macro(obj):
     """
-    Return marco string for specified ``model`` and ``id``.
-    You can specified function to be called to get absolute url.
+    Return macro string for specified ``obj``.
+    
+    >>> from example.models import Page
+    >>> from modelurl.middleware import MACRO_RE
+    
+    >>> page = Page.objects.get(pk=1)
+    >>> macro(page)
+    '{@ example.models.Page 1 @}'
+
+    >>> bool(MACRO_RE.match(macro(page)))
+    True
     """
-    if function:
-        return '{@ %s.%s %s %s @}' % (model.__module__, model.__name__, id, function)
-    else:
-        return '{@ %s.%s %s @}' % (model.__module__, model.__name__, id)
+    return '{@ %s.%s %s @}' % (obj.__class__.__module__, obj.__class__.__name__, obj.pk)
 
 class ReplaceException(Exception):
     """
@@ -64,7 +70,7 @@ class BaseReplace(object):
     def __init__(self, silent=False):
         """
         If ``silent`` is True then instance of this class must
-        raise exceptions when urls can`t be replaces with marco.
+        raise exceptions when urls can`t be replaces with macro.
         
         If ``silent`` is False then instance of this class must
         return source value.
@@ -91,22 +97,34 @@ class ReplaceByDict(BaseReplace):
     """
     Replace urls with macros using dictionary.
     
-    >>> from modelurl import generate_marco, ReplaceByDict
-    >>> urls = {}
-    >>> for page in Page.objects.filter(show=True):
-    >>>    urls[page.get_absolute_url()] = generate_marco(Page, page.id)
-    >>> replace = ReplaceByDict(urls)
-    >>> replace.url('/about')
-    '{@ pages.model.Page 7 @}'
-    >>> replace.text('<a href="/about">about</a>')
-    '<a href="{@ pages.model.Page 7 @}">about</a>'
+    >>> from example.models import Page, Item
+    
+    >>> dictionary = {}
+    >>> for page in Page.objects.all():
+    ...     dictionary[page.get_absolute_url()] = macro(page)
+    ...
+    >>> for item in Item.objects.all():
+    ...     dictionary[item.my_url()] = macro(item)
+    ...
+    >>> replace = ReplaceByDict(dictionary)
+    
+    >>> replace.url('/page_by_id/1')
+    '{@ example.models.Page 1 @}'
+
+    >>> replace.url('/page_by_id/2')
+    Traceback (most recent call last):
+        ...
+    DoesNotFoundException
+
+    >>> replace.text('<a href="/page_by_id/2">page</a> and /item_by_barcode/second')
+    '<a href="/page_by_id/2">page</a> and {@ example.models.Item 2 @}'
     """
 
     def __init__(self, dict, *args, **kwargs):
         """
         Set ``dict`` dictionary for replace operations.
         Keys must be an url.
-        Value must be macro (use ``modelurl.generate_marco`` function to get it).
+        Value must be macro (use ``modelurl.generate_macro`` function to get it).
         """
         super(ReplaceByDict, self).__init__(*args, **kwargs)
         self.source = dict
@@ -142,7 +160,7 @@ class ReplaceByDict(BaseReplace):
     @silentmethod
     def url(self, value):
         """
-        Return marco for specified ``value``.
+        Return macro for specified ``value``.
         """
         try:
             return self.get_dict()[value.lower()]
@@ -151,12 +169,12 @@ class ReplaceByDict(BaseReplace):
     
     def text(self, value):
         """
-        Replace urls in ``text`` with marcos.
+        Replace urls in ``text`` with macros.
         """
         def replace(match):
             for index, value in enumerate(match.groups()):
                 if value is not None:
-                    return self.get_list()[index]
+                    return self.get_list()[index][1]
             return ''
         return self.get_regexp().sub(replace, value)
 
@@ -222,7 +240,7 @@ class ReplaceByView(BaseReplace):
 
     @silentmethod
     def url(self, value):
-        if MARCO_RE.match(value):
+        if MACRO_RE.match(value):
             raise AlreadyMacroException
         scheme, authority, path, query, fragment = urlsplit(value)
         if not scheme and not authority and not path:
@@ -241,6 +259,6 @@ class ReplaceByView(BaseReplace):
         else:
             send_query = ''
         obj = object_from_view(path, send_query, object_name)
-        path = generate_marco(obj.__class__, obj.id)
+        path = generate_macro(obj.__class__, obj.id)
         value = urljoin(None, None, path, query, fragment)
         return value

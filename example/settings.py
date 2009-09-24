@@ -23,3 +23,36 @@ INSTALLED_APPS = (
     'modelurl',
     'example',
 )
+
+MIDDLEWARE_CLASSES = [
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'modelurl.middleware.ModelUrlMiddleware',
+]
+
+#django-model-url
+MODELURL_MODELS = [
+    {
+        'model': 'example.models.Page',
+    },
+    {
+        'model': 'example.models.Item',
+        'function': 'my_url',
+    },
+]
+
+MODELURL_VIEWS = [
+    {
+        'view': 'views.page_by_id',
+        'context': 'page',
+    },
+    {
+        'view': 'views.item_by_id',
+        'context': 'item',
+    },
+    {
+        'view': 'views.item_by_barcode',
+        'context': 'item',
+    },
+]
