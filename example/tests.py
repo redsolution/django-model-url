@@ -1,7 +1,9 @@
-import unittest
-from django.test import Client
+from django.test import TestCase, Client
+from models import Page, Item
 
-class Test(unittest.TestCase):
+class Test(TestCase):
+    fixtures = ['example.json']
+     
     def setUp(self):
         pass
 
@@ -20,6 +22,16 @@ class Test(unittest.TestCase):
         self.assertEqual(client.get('/request_true_response').content , 'True')
         self.assertEqual(client.get('/request_false_response').content , 'False')
         self.assertEqual(client.get('/doesnotexists').status_code, 404)
+        self.assertEqual(client.get('/page_by_id/1').content, 'page')
+        self.assertEqual(client.get('/page_by_id/2').status_code, 404)
+        self.assertEqual(client.get('/page_by_id/string').status_code, 404)
+        self.assertEqual(client.get('/item_by_id/1').content, 'first')
+        self.assertEqual(client.get('/item_by_id/2').content, 'second')
+        self.assertEqual(client.get('/item_by_id/3').status_code, 404)
+        self.assertEqual(client.get('/item_by_id/string').status_code, 404)
+        self.assertEqual(client.get('/item_by_barcode/first').content, 'first')
+        self.assertEqual(client.get('/item_by_barcode/second').content, 'second')
+        self.assertEqual(client.get('/item_by_barcode/string').status_code, 404)
         
     def tearDown(self):
         pass

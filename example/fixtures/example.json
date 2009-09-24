@@ -1,0 +1,1 @@
+[{"pk": 1, "model": "example.page", "fields": {"content": "page"}}, {"pk": 1, "model": "example.item", "fields": {"barcode": "first"}}, {"pk": 2, "model": "example.item", "fields": {"barcode": "second"}}]
