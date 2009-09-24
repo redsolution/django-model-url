@@ -7,6 +7,12 @@ class Test(TestCase):
     def setUp(self):
         pass
 
+    def test_objects(self):
+        page = Page.objects.get(pk=1)
+        item = Item.objects.get(pk=1)
+        self.assertEqual(page.get_absolute_url(), '/page_by_id/1')
+        self.assertEqual(item.my_url(), '/item_by_barcode/first')
+
     def test_views(self):
         client = Client()
         self.assertEqual(client.get('/response').status_code, 200)
