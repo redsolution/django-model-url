@@ -21,4 +21,5 @@ INSTALLED_APPS = (
     'django.contrib.sites',
     'urlmethods',
     'modelurl',
+    'example',
 )
