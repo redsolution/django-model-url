@@ -1,0 +1,43 @@
+h1. Install
+
+h2. Required
+
+django-url-methods
+
+h2. Buildout
+
+<pre>
+[buildout]
+parts = ...
+        django-url-methods
+        django-model-url
+        
+[django]
+...
+extra-paths = ...
+              ${django-url-methods:location}
+              ${django-model-url:location}
+
+[django-url-methods]
+recipe = zerokspot.recipe.git
+repository = ssh://verne.redsolution.ru/srv/git/django-url-methods.git
+
+[django-model-url]
+recipe = zerokspot.recipe.git
+repository = ssh://verne.redsolution.ru/srv/git/django-model-url.git
+</pre>
+
+h2. settings.py
+
+<pre>
+MIDDLEWARE_CLASSES = [
+    ...
+    'modelurl.middleware.ModelUrlMiddleware',
+]
+...
+INSTALLED_APPS = (
+...
+    'modelurl',
+)
+...
+</pre>
