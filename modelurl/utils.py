@@ -9,10 +9,10 @@ import threading
 from django.conf import settings
 from django.contrib.sites.models import Site
 from django.core.urlresolvers import RegexURLResolver
-from django.template import Template
+from django.template import NodeList
 from django.utils.safestring import mark_safe
 
-from urlmethods import urlsplit, urljoin, local_response
+from urlmethods import urlsplit, urljoin, local_response_unthreaded
 from urlmethods.threadmethod import threadmethod
 
 from importpath import importpath
@@ -172,7 +172,9 @@ class ReplaceByDict(BaseReplace):
     DoesNotFoundException
 
     >>> replace.url('/page_by_id/1/')
-    '{@ example.models.Page 1 @}'
+    Traceback (most recent call last):
+        ...
+    DoesNotFoundException
 
     >>> replace.url('/page_by_id/1?query')
     Traceback (most recent call last):
@@ -192,7 +194,7 @@ class ReplaceByDict(BaseReplace):
     '<a href="{@ example.models.Page 1 @}#anchor">page</a> and {@ example.models.Page 1 @}?query'
 
     >>> replace.text('<a href="/page_by_id/1/">page</a> and /page_by_id/1/?query')
-    '<a href="{@ example.models.Page 1 @}/">page</a> and {@ example.models.Page 1 @}/?query'
+    '<a href="/page_by_id/1/">page</a> and /page_by_id/1/?query'
 
     >>> replace.text('<a href="http://another.com/page_by_id/1">page</a> and /page_by_id/11')
     '<a href="http://another.com{@ example.models.Page 1 @}">page</a> and {@ example.models.Page 11 @}'
@@ -237,7 +239,7 @@ class ReplaceByDict(BaseReplace):
         Return regexp for all urls.
         """
         if self._regexp is None:
-            self._regexp = re.compile(r'''(%s)(?=/?(\s|[#?"'>]|$))''' % 
+            self._regexp = re.compile(r'''(%s)(?=\s|[#?"'>]|$)''' % 
                 '|'.join(['(%s)' % re.escape(key)
                     for key, value in self.lst]),
                 re.IGNORECASE)
@@ -252,18 +254,7 @@ class ReplaceByDict(BaseReplace):
         try:
             return self.dct[value.lower()]
         except KeyError:
-            if value.endswith('/'):
-                value = value[:-1]
-                try:
-                    return self.dct[value]
-                except KeyError:
-                    pass
-            else:
-                try:
-                    return self.dct[value + '/'] + '/'
-                except KeyError:
-                    pass
-        raise DoesNotFoundException
+            raise DoesNotFoundException
     
     def text(self, value):
         """
@@ -281,10 +272,85 @@ class ReplaceByDict(BaseReplace):
 
 if getattr(settings, 'MODELURL_VIEWS', []):
     def render(func):
+        """
+        Replacement for NodeList.render to
+        provide fetching objects for ReplaceByView
+        
+        # render_by_model_url flag must be already set  
+        >>> NodeList.render_by_model_url
+        1
+        
+        >>> from time import sleep
+        >>> from django.template import Template, Context
+        
+        # Thread without object_name
+        >>> @threadmethod(return_immediately=True)
+        ... def normal(before, after):
+        ...     sleep(before)
+        ...     template = Template('{{ page }}{{ item }}{{ data }}')
+        ...     template.render(Context({'page': 1, 'item': 2, 'data': 3}))
+        ...     sleep(after)
+        ...     return 0
+        ...
+
+        # Thread with object_name 'page'
+        >>> @threadmethod(return_immediately=True)
+        ... def page(before, after):
+        ...     local.modelurl_object_name = 'page'
+        ...     sleep(before)
+        ...     template = Template('{{ page }}{{ item }}{{ data }}')
+        ...     template.render(Context({'page': 1, 'item': 2, 'data': 3}))
+        ...     sleep(after)
+        ...     return local.modelurl_object
+        ...
+
+        # Thread with object_name 'item'
+        >>> @threadmethod(return_immediately=True)
+        ... def item(before, after):
+        ...     local.modelurl_object_name = 'item'
+        ...     sleep(before)
+        ...     template = Template('{{ page }}{{ item }}{{ data }}')
+        ...     template.render(Context({'page': 1, 'item': 2, 'data': 3}))
+        ...     sleep(after)
+        ...     return local.modelurl_object
+        ...
+
+        # Thread with object_name 'page' and number of render calls
+        >>> @threadmethod(return_immediately=True)
+        ... def calls(before, after):
+        ...     local.modelurl_object_name = 'page'
+        ...     sleep(before)
+        ...     template = Template('{{ item }}{{ data }}')
+        ...     template.render(Context({'item': 1, 'data': 2}))
+        ...     template = Template('{{ page }}{{ item }}{{ data }}')
+        ...     template.render(Context({'page': 3, 'item': 4, 'data': 5}))
+        ...     template = Template('{{ page }}{{ item }}{{ data }}')
+        ...     template.render(Context({'page': 6, 'item': 7, 'data': 8}))
+        ...     sleep(after)
+        ...     return local.modelurl_object
+        
+        # Start them all
+        >>> ti = item(0.4, 0.1)
+        >>> tg = page(0.3, 0.2)
+        >>> tn = normal(0.2, 0.3)
+        >>> tc = calls(0.1, 0.4)
+        >>> ti.join()
+        >>> tg.join()
+        >>> tn.join()
+        >>> tc.join()
+        >>> tn.result
+        0
+        >>> tg.result
+        1
+        >>> ti.result
+        2
+        >>> tc.result
+        3
+        """
         def wrapper(self, context):
             if hasattr(local, 'modelurl_object'):
                 # We don`t want to render content if required object was found
-                # for this thread.  
+                # for this thread.
                 return ''
             if hasattr(local, 'modelurl_object_name'):
                 # We want to get object for modelurl if object_name was specified
@@ -297,20 +363,26 @@ if getattr(settings, 'MODELURL_VIEWS', []):
             return func(self, context)
         return wrapper
     
-    # Create lock to update Template only once
+    # Create lock to update NodeList only once
     lock = threading.Lock()
     lock.acquire()
-    if not hasattr(Template, 'render_by_model_url'):
+    if not hasattr(NodeList, 'render_by_model_url'):
         # Register another render function to provide ReplaceByView
-        Template.render = render(Template.render)
-        setattr(Template, 'render_by_model_url', True)
+        # It will be more correctly to wrap Template.render
+        # but django.test.instrumented_test_render does not call it
+        # so we will wrap NodeList.render
+        NodeList.render = render(NodeList.render)
+        NodeList.render_by_model_url = True
     lock.release()
 
 @threadmethod()
 def object_from_view(path, query, object_name):
     local.modelurl_object_name = object_name
-    response = local_response(path, query)
-    if response.status_code != 200:
+    try:
+        response = local_response_unthreaded(path, query)
+        if response.status_code != 200:
+            raise DoesNotFoundException
+    except:
         raise DoesNotFoundException
     try:
         return local.modelurl_object
@@ -325,10 +397,10 @@ class ReplaceByView(BaseReplace):
     >>> replace = ReplaceByView()
     
     >>> replace.url('/page_by_id/1')
-    '{@ example.models.Page 1 @}'
+    u'{@ example.models.Page 1 @}'
 
     >>> replace.url('/page_by_id/11')
-    '{@ example.models.Page 11 @}'
+    u'{@ example.models.Page 11 @}'
 
     >>> replace.url('/page_by_id/12')
     Traceback (most recent call last):
@@ -346,32 +418,26 @@ class ReplaceByView(BaseReplace):
     DoesNotFoundException
 
     >>> replace.url('/page_by_id/1#anchor')
-    '{@ example.models.Page 1 @}#anchor'
+    u'{@ example.models.Page 1 @}#anchor'
 
     >>> replace.url('/page_by_id/1?query')
-    '{@ example.models.Page 1 @}?query'
+    u'{@ example.models.Page 1 @}?query'
 
     >>> replace.url('/page_by_id/1/')
-    '{@ example.models.Page 1 @}'
-
-    >>> replace.url('/page_by_id/1/?query')
-    '{@ example.models.Page 1 @}?query'
-    
-    >>> replace.url('/page_by_id/1/another')
     Traceback (most recent call last):
         ...
     DoesNotFoundException
-    
+
     >>> replace.url('http://another.com/page_by_id/1')
     Traceback (most recent call last):
         ...
-    DoesNotFoundException
+    ForeignException
     
     >>> replace.url('/item_by_barcode/second')
-    '{@ example.models.Item 2 @}'
+    u'{@ example.models.Item 2 @}'
     
     >>> replace.url('/item_by_id/2')
-    '{@ example.models.Item 2 @}'
+    u'{@ example.models.Item 2 @}'
     """
     
     def __init__(self, check_sites=[], check_schemes=['http', ],
@@ -395,7 +461,10 @@ class ReplaceByView(BaseReplace):
             (authority and authority.lower() not in self.check_sites):
             raise ForeignException
         resolver = RegexURLResolver(r'^/', settings.ROOT_URLCONF)
-        callback, callback_args, callback_kwargs = resolver.resolve(value)
+        try:
+            callback, callback_args, callback_kwargs = resolver.resolve(path)
+        except Exception:
+            raise DoesNotFoundException
         try:
             setting = self.views[callback]
         except KeyError:
