@@ -2,7 +2,7 @@
 Replace macro in response with absolute urls.
 
 >>> from django.test import Client
->>> from modelurl import macro
+>>> from modelurl.utils import macro
 >>> from example.models import Page, Item
 >>> client = Client()
 

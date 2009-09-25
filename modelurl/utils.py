@@ -270,110 +270,111 @@ class ReplaceByDict(BaseReplace):
             return ''
         return self.regexp.sub(replace, value)
 
-if getattr(settings, 'MODELURL_VIEWS', []):
-    def render(func):
-        """
-        Replacement for NodeList.render to
-        provide fetching objects for ReplaceByView
-        
-        # render_by_model_url flag must be already set  
-        >>> NodeList.render_by_model_url
-        1
-        
-        >>> from time import sleep
-        >>> from django.template import Template, Context
-        
-        # Thread without object_name
-        >>> @threadmethod(return_immediately=True)
-        ... def normal(before, after):
-        ...     sleep(before)
-        ...     template = Template('{{ page }}{{ item }}{{ data }}')
-        ...     template.render(Context({'page': 1, 'item': 2, 'data': 3}))
-        ...     sleep(after)
-        ...     return 0
-        ...
-
-        # Thread with object_name 'page'
-        >>> @threadmethod(return_immediately=True)
-        ... def page(before, after):
-        ...     local.modelurl_object_name = 'page'
-        ...     sleep(before)
-        ...     template = Template('{{ page }}{{ item }}{{ data }}')
-        ...     template.render(Context({'page': 1, 'item': 2, 'data': 3}))
-        ...     sleep(after)
-        ...     return local.modelurl_object
-        ...
-
-        # Thread with object_name 'item'
-        >>> @threadmethod(return_immediately=True)
-        ... def item(before, after):
-        ...     local.modelurl_object_name = 'item'
-        ...     sleep(before)
-        ...     template = Template('{{ page }}{{ item }}{{ data }}')
-        ...     template.render(Context({'page': 1, 'item': 2, 'data': 3}))
-        ...     sleep(after)
-        ...     return local.modelurl_object
-        ...
-
-        # Thread with object_name 'page' and number of render calls
-        >>> @threadmethod(return_immediately=True)
-        ... def calls(before, after):
-        ...     local.modelurl_object_name = 'page'
-        ...     sleep(before)
-        ...     template = Template('{{ item }}{{ data }}')
-        ...     template.render(Context({'item': 1, 'data': 2}))
-        ...     template = Template('{{ page }}{{ item }}{{ data }}')
-        ...     template.render(Context({'page': 3, 'item': 4, 'data': 5}))
-        ...     template = Template('{{ page }}{{ item }}{{ data }}')
-        ...     template.render(Context({'page': 6, 'item': 7, 'data': 8}))
-        ...     sleep(after)
-        ...     return local.modelurl_object
-        
-        # Start them all
-        >>> ti = item(0.4, 0.1)
-        >>> tg = page(0.3, 0.2)
-        >>> tn = normal(0.2, 0.3)
-        >>> tc = calls(0.1, 0.4)
-        >>> ti.join()
-        >>> tg.join()
-        >>> tn.join()
-        >>> tc.join()
-        >>> tn.result
-        0
-        >>> tg.result
-        1
-        >>> ti.result
-        2
-        >>> tc.result
-        3
-        """
-        def wrapper(self, context):
-            if hasattr(local, 'modelurl_object'):
-                # We don`t want to render content if required object was found
-                # for this thread.
-                return ''
-            if hasattr(local, 'modelurl_object_name'):
-                # We want to get object for modelurl if object_name was specified
-                # for this thread.
-                try:
-                    local.modelurl_object = context[local.modelurl_object_name]
-                except KeyError:
-                    # Just skip it, may be we get it later.
-                    pass
-            return func(self, context)
-        return wrapper
+def render(func):
+    """
+    Replacement for NodeList.render to
+    provide fetching objects for ReplaceByView
     
-    # Create lock to update NodeList only once
-    lock = threading.Lock()
-    lock.acquire()
-    if not hasattr(NodeList, 'render_by_model_url'):
-        # Register another render function to provide ReplaceByView
-        # It will be more correctly to wrap Template.render
-        # but django.test.instrumented_test_render does not call it
-        # so we will wrap NodeList.render
-        NodeList.render = render(NodeList.render)
-        NodeList.render_by_model_url = True
-    lock.release()
+    # render_by_model_url flag must be already set  
+    >>> hasattr(NodeList, 'render_by_model_url') 
+    True
+
+    >>> from time import sleep
+    >>> from django.template import Template, Context
+    
+    # Thread without object_name
+    >>> @threadmethod(return_immediately=True)
+    ... def normal(before, after):
+    ...     sleep(before)
+    ...     template = Template('{{ page }}{{ item }}{{ data }}')
+    ...     template.render(Context({'page': 1, 'item': 2, 'data': 3}))
+    ...     sleep(after)
+    ...     return 0
+    ...
+
+    # Thread with object_name 'page'
+    >>> @threadmethod(return_immediately=True)
+    ... def page(before, after):
+    ...     local.modelurl_object_name = 'page'
+    ...     sleep(before)
+    ...     template = Template('{{ page }}{{ item }}{{ data }}')
+    ...     template.render(Context({'page': 1, 'item': 2, 'data': 3}))
+    ...     sleep(after)
+    ...     return local.modelurl_object
+    ...
+
+    # Thread with object_name 'item'
+    >>> @threadmethod(return_immediately=True)
+    ... def item(before, after):
+    ...     local.modelurl_object_name = 'item'
+    ...     sleep(before)
+    ...     template = Template('{{ page }}{{ item }}{{ data }}')
+    ...     template.render(Context({'page': 1, 'item': 2, 'data': 3}))
+    ...     sleep(after)
+    ...     return local.modelurl_object
+    ...
+
+    # Thread with object_name 'page' and number of render calls
+    >>> @threadmethod(return_immediately=True)
+    ... def calls(before, after):
+    ...     local.modelurl_object_name = 'page'
+    ...     sleep(before)
+    ...     template = Template('{{ item }}{{ data }}')
+    ...     template.render(Context({'item': 1, 'data': 2}))
+    ...     template = Template('{{ page }}{{ item }}{{ data }}')
+    ...     template.render(Context({'page': 3, 'item': 4, 'data': 5}))
+    ...     template = Template('{{ page }}{{ item }}{{ data }}')
+    ...     template.render(Context({'page': 6, 'item': 7, 'data': 8}))
+    ...     sleep(after)
+    ...     return local.modelurl_object
+    
+    # Start them all
+    >>> ti = item(0.4, 0.1)
+    >>> tg = page(0.3, 0.2)
+    >>> tn = normal(0.2, 0.3)
+    >>> tc = calls(0.1, 0.4)
+    >>> ti.join()
+    >>> tg.join()
+    >>> tn.join()
+    >>> tc.join()
+    >>> tn.result
+    0
+    >>> tg.result
+    1
+    >>> ti.result
+    2
+    >>> tc.result
+    3
+    """
+    if not getattr(settings, 'MODELURL_VIEWS', []):
+        return func
+    def wrapper(self, context):
+        if hasattr(local, 'modelurl_object'):
+            # We don`t want to render content if required object was found
+            # for this thread.
+            return ''
+        if hasattr(local, 'modelurl_object_name'):
+            # We want to get object for modelurl if object_name was specified
+            # for this thread.
+            try:
+                local.modelurl_object = context[local.modelurl_object_name]
+            except KeyError:
+                # Just skip it, may be we get it later.
+                pass
+        return func(self, context)
+    return wrapper
+    
+# Create lock to update NodeList only once
+lock = threading.Lock()
+lock.acquire()
+if not hasattr(NodeList, 'render_by_model_url'):
+    # Register another render function to provide ReplaceByView
+    # It will be more correctly to wrap Template.render
+    # but django.test.instrumented_test_render does not call it
+    # so we will wrap NodeList.render
+    NodeList.render = render(NodeList.render)
+    NodeList.render_by_model_url = True
+lock.release()
 
 @threadmethod()
 def object_from_view(path, query, object_name):
