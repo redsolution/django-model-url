@@ -1,19 +1,71 @@
 """
-Classes to replace urls with macros.
+Utils to replace macro with url for specified objects.
+And to replace urls with macro.
 """
 
 import re
 import threading
-from importpath import importpath
-
-from urlmethods import urlsplit, urljoin, local_response
-from urlmethods.threadmethod import threadmethod
-from middleware import MACRO_RE
 
 from django.conf import settings
 from django.contrib.sites.models import Site
 from django.core.urlresolvers import RegexURLResolver
 from django.template import Template
+from django.utils.safestring import mark_safe
+
+from urlmethods import urlsplit, urljoin, local_response
+from urlmethods.threadmethod import threadmethod
+
+from importpath import importpath
+
+local = threading.local()
+
+MACRO_RE = re.compile(r'{@\s*([.a-zA-Z]+)\s+(\S+)\s*@}')
+
+def MACRO_REPL(match):
+    """
+    Replace function for macro.
+    
+    >>> bool(MACRO_RE.match('{@ example.models.Page 1 @}'))
+    True
+    
+    >>> bool(MACRO_RE.match('{@ example.models.DoesNotExists 1 @}'))
+    True
+    
+    >>> bool(MACRO_RE.match('{@ 1 @}'))
+    False
+    
+    >>> MACRO_RE.sub(MACRO_REPL, '<a href="{@ example.models.Page 1 @}">Page</a>')
+    '<a href="/page_by_id/1">Page</a>'
+    
+    >>> MACRO_RE.sub(MACRO_REPL, '<a href="{@ example.models.DoesNotExists 1 @}">Page</a>') 
+    '<a href="">Page</a>'
+    
+    >>> MACRO_RE.sub(MACRO_REPL, '<a href="{@ 1 @}">Page</a>') 
+    '<a href="{@ 1 @}">Page</a>'
+    
+    >>> MACRO_RE.sub(MACRO_REPL, '<a href="{@ example-models-Page 1 @}">Page</a>')
+    '<a href="{@ example-models-Page 1 @}">Page</a>'
+    
+    >>> (MACRO_RE.sub(MACRO_REPL, u'<a href="{@ example.models.Page 1 @}">\u00a0</a>') ==
+    ... u'<a href="/page_by_id/1">\u00a0</a>')
+    True
+    """
+    model, pk = match.groups()
+    for setting in getattr(settings, 'MODELURL_MODELS', []):
+        if model == setting.get('model', ''):
+            function = setting.get('function', 'get_absolute_url')
+            break
+    else:
+        return mark_safe('')
+    model = importpath(model)
+    try:
+        obj = model.objects.get(pk=pk)
+    except model.DoesNotExist:
+        return mark_safe('')
+    if not function:
+        function = 'get_absolute_url'
+    url = getattr(obj, function)()
+    return mark_safe(url.encode('utf-8'))
 
 def macro(obj):
     """
@@ -111,13 +163,42 @@ class ReplaceByDict(BaseReplace):
     >>> replace.url('/page_by_id/1')
     '{@ example.models.Page 1 @}'
 
-    >>> replace.url('/page_by_id/2')
+    >>> replace.url('/page_by_id/11')
+    '{@ example.models.Page 11 @}'
+
+    >>> replace.url('/page_by_id/12')
     Traceback (most recent call last):
         ...
     DoesNotFoundException
 
-    >>> replace.text('<a href="/page_by_id/2">page</a> and /item_by_barcode/second')
-    '<a href="/page_by_id/2">page</a> and {@ example.models.Item 2 @}'
+    >>> replace.url('/page_by_id/1/')
+    '{@ example.models.Page 1 @}'
+
+    >>> replace.url('/page_by_id/1?query')
+    Traceback (most recent call last):
+        ...
+    DoesNotFoundException
+
+    >>> replace.text('<a href="/page_by_id/1">page</a> and /page_by_id/1 ')
+    '<a href="{@ example.models.Page 1 @}">page</a> and {@ example.models.Page 1 @} '
+
+    >>> replace.text('<a href=/page_by_id/1>page</a> and /page_by_id/1')
+    '<a href={@ example.models.Page 1 @}>page</a> and {@ example.models.Page 1 @}'
+
+    >>> replace.text("<a href='/page_by_id/1'>page</a> and /page_by_id/1/another")
+    "<a href='{@ example.models.Page 1 @}'>page</a> and /page_by_id/1/another"
+
+    >>> replace.text('<a href="/page_by_id/1#anchor">page</a> and /page_by_id/1?query')
+    '<a href="{@ example.models.Page 1 @}#anchor">page</a> and {@ example.models.Page 1 @}?query'
+
+    >>> replace.text('<a href="/page_by_id/1/">page</a> and /page_by_id/1/?query')
+    '<a href="{@ example.models.Page 1 @}/">page</a> and {@ example.models.Page 1 @}/?query'
+
+    >>> replace.text('<a href="http://another.com/page_by_id/1">page</a> and /page_by_id/11')
+    '<a href="http://another.com{@ example.models.Page 1 @}">page</a> and {@ example.models.Page 11 @}'
+
+    >>> replace.text('<a href="/page_by_id/12">page</a> and /item_by_barcode/second')
+    '<a href="/page_by_id/12">page</a> and {@ example.models.Item 2 @}'
     """
 
     def __init__(self, dict, *args, **kwargs):
@@ -128,84 +209,102 @@ class ReplaceByDict(BaseReplace):
         """
         super(ReplaceByDict, self).__init__(*args, **kwargs)
         self.source = dict
-        self.dict = None
-        self.list = None
-        self.regexp = None
+        self._dct = None
+        self._lst = None
+        self._regexp = None
     
-    def get_dict(self):
-        if self.dict is None:
-            self.dict = {}
+    @property
+    def dct(self):
+        if self._dct is None:
+            self._dct = {}
             for key, value in self.source.iteritems():
-                self.dict[key.lower()] = value
-        return self.dict
+                self._dct[key.lower()] = value
+        return self._dct
 
-    def get_list(self):
+    @property
+    def lst(self):
         """
         Return list with urls and macros.
         """
-        if self.list is None:
-            self.list = list(self.get_dict().iteritems())
-        self.list.sort(reverse=True)
-        return self.list
+        if self._lst is None:
+            self._lst = list(self.dct.iteritems())
+            self._lst.sort(reverse=True)
+        return self._lst
 
-    def get_regexp(self):
+    @property
+    def regexp(self):
         """
         Return regexp for all urls.
         """
-        if self.regexp is None:
-            self.regexp = re.compile('|'.join(['(%s)' % re.escape(key)
-                for key, value in self.get_list()]), re.IGNORECASE)
-        return self.regexp
+        if self._regexp is None:
+            self._regexp = re.compile(r'''(%s)(?=/?(\s|[#?"'>]|$))''' % 
+                '|'.join(['(%s)' % re.escape(key)
+                    for key, value in self.lst]),
+                re.IGNORECASE)
+        return self._regexp
 
     @silentmethod
     def url(self, value):
         """
         Return macro for specified ``value``.
         """
+        value = value.lower()
         try:
-            return self.get_dict()[value.lower()]
+            return self.dct[value.lower()]
         except KeyError:
-            raise DoesNotFoundException
+            if value.endswith('/'):
+                value = value[:-1]
+                try:
+                    return self.dct[value]
+                except KeyError:
+                    pass
+            else:
+                try:
+                    return self.dct[value + '/'] + '/'
+                except KeyError:
+                    pass
+        raise DoesNotFoundException
     
     def text(self, value):
         """
         Replace urls in ``text`` with macros.
         """
         def replace(match):
+            length = len(self.lst)
             for index, value in enumerate(match.groups()):
+                if index == 0 or index > length:
+                    continue
                 if value is not None:
-                    return self.get_list()[index][1]
+                    return self.lst[index - 1][1]
             return ''
-        return self.get_regexp().sub(replace, value)
+        return self.regexp.sub(replace, value)
 
-
-# Create local variable for all threads
-local = threading.local()
-def render(func):
-    def wrapper(self, context):
-        if hasattr(local, 'modelurl_object'):
-            # We don`t want to render content if required object was found
-            # for this thread.  
-            return ''
-        if hasattr(local, 'modelurl_object_name'):
-            # We want to get object for modelurl if object_name was specified
-            # for this thread.
-            try:
-                local.modelurl_object = context[local.modelurl_object_name]
-            except KeyError:
-                # Just skip it, may be we get it later.
-                pass
-        return func(self, context)
-    return wrapper
-
-# Create lock to update Template only once
-lock = threading.Lock()
-lock.acquire()
-if not hasattr(Template, 'render_by_model_url'):
-    # Register another render function to provide ReplaceByView
-    Template.render = render(Template.render)
-    setattr(Template, 'render_by_model_url', True)
-lock.release()
+if getattr(settings, 'MODELURL_VIEWS', []):
+    def render(func):
+        def wrapper(self, context):
+            if hasattr(local, 'modelurl_object'):
+                # We don`t want to render content if required object was found
+                # for this thread.  
+                return ''
+            if hasattr(local, 'modelurl_object_name'):
+                # We want to get object for modelurl if object_name was specified
+                # for this thread.
+                try:
+                    local.modelurl_object = context[local.modelurl_object_name]
+                except KeyError:
+                    # Just skip it, may be we get it later.
+                    pass
+            return func(self, context)
+        return wrapper
+    
+    # Create lock to update Template only once
+    lock = threading.Lock()
+    lock.acquire()
+    if not hasattr(Template, 'render_by_model_url'):
+        # Register another render function to provide ReplaceByView
+        Template.render = render(Template.render)
+        setattr(Template, 'render_by_model_url', True)
+    lock.release()
 
 @threadmethod()
 def object_from_view(path, query, object_name):
@@ -222,20 +321,67 @@ class ReplaceByView(BaseReplace):
     """
     Replace urls with macros using calling of view for specified url 
     and retrieve object from context.
+    
+    >>> replace = ReplaceByView()
+    
+    >>> replace.url('/page_by_id/1')
+    '{@ example.models.Page 1 @}'
+
+    >>> replace.url('/page_by_id/11')
+    '{@ example.models.Page 11 @}'
+
+    >>> replace.url('/page_by_id/12')
+    Traceback (most recent call last):
+        ...
+    DoesNotFoundException
+
+    >>> replace.url('/notfound')
+    Traceback (most recent call last):
+        ...
+    DoesNotFoundException
+
+    >>> replace.url('/response')
+    Traceback (most recent call last):
+        ...
+    DoesNotFoundException
+
+    >>> replace.url('/page_by_id/1#anchor')
+    '{@ example.models.Page 1 @}#anchor'
+
+    >>> replace.url('/page_by_id/1?query')
+    '{@ example.models.Page 1 @}?query'
+
+    >>> replace.url('/page_by_id/1/')
+    '{@ example.models.Page 1 @}'
+
+    >>> replace.url('/page_by_id/1/?query')
+    '{@ example.models.Page 1 @}?query'
+    
+    >>> replace.url('/page_by_id/1/another')
+    Traceback (most recent call last):
+        ...
+    DoesNotFoundException
+    
+    >>> replace.url('http://another.com/page_by_id/1')
+    Traceback (most recent call last):
+        ...
+    DoesNotFoundException
+    
+    >>> replace.url('/item_by_barcode/second')
+    '{@ example.models.Item 2 @}'
+    
+    >>> replace.url('/item_by_id/2')
+    '{@ example.models.Item 2 @}'
     """
     
-    SERVER_SCHEMES = ['http', ]
-    
-    def __init__(self, views=None, sites=None, send_query=False, *args, **kwargs):
+    def __init__(self, check_sites=[], check_schemes=['http', ],
+        send_query=False, *args, **kwargs):
         super(ReplaceByView, self).__init__(*args, **kwargs)
-        if views is None:
-            views = settings.MODELURL_VIEWS
         self.views = {}
-        for view, name in views.iteritems():
-            self.views[importpath(view)] = name
-        if sites is None:
-            sites = [site.domain for site in Site.objects.all()]
-        self.sites = sites
+        for setting in getattr(settings, 'MODELURL_VIEWS', []):
+            self.views[importpath(setting['view'])] = setting
+        self.check_sites = [value.lower() for value in check_sites]
+        self.check_schemes = [value.lower() for value in check_schemes]
         self.send_query = send_query
 
     @silentmethod
@@ -245,20 +391,18 @@ class ReplaceByView(BaseReplace):
         scheme, authority, path, query, fragment = urlsplit(value)
         if not scheme and not authority and not path:
             raise NoPathException
-        if (scheme and scheme.lower() not in self.SERVER_SCHEMES) or\
-            (authority and authority.lower() not in self.sites):
+        if (scheme and scheme.lower() not in self.check_schemes) or\
+            (authority and authority.lower() not in self.check_sites):
             raise ForeignException
         resolver = RegexURLResolver(r'^/', settings.ROOT_URLCONF)
         callback, callback_args, callback_kwargs = resolver.resolve(value)
         try:
-            object_name = self.views[callback]
+            setting = self.views[callback]
         except KeyError:
             raise DoesNotFoundException
-        if self.send_query:
-            send_query = query
-        else:
-            send_query = ''
-        obj = object_from_view(path, send_query, object_name)
-        path = generate_macro(obj.__class__, obj.id)
+        obj = object_from_view(path, query, setting['context'])
+        path = macro(obj)
+        if setting.get('remove_query', False):
+            query = None
         value = urljoin(None, None, path, query, fragment)
         return value

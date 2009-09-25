@@ -6,6 +6,7 @@ parent_dir = os.path.dirname(example_dir)
 urlmethods_dir = os.path.join(os.path.dirname(parent_dir), 'django-url-methods')
 
 sys.path[0:0] = [
+    r'E:\projects\abvi\src\parts\django',
     example_dir,
     parent_dir,
     urlmethods_dir,

@@ -1,57 +1,51 @@
 """
 Replace macro in response with absolute urls.
 
->>> bool(MACRO_RE.match('{@ example.models.Page 1 @}'))
-True
+>>> from django.test import Client
+>>> from modelurl import macro
+>>> from example.models import Page, Item
+>>> client = Client()
 
->>> bool(MACRO_RE.match('{@ example.models.DoesNotExists 1 @}'))
-True
+# Get an object
+>>> item = Item.objects.get(pk=1)
+>>> item.my_url()
+'/item_by_barcode/first'
 
->>> bool(MACRO_RE.match('{@ 1 @}'))
-False
+# Save content with link to the object
+>>> page = Page.objects.get(pk=1)
+>>> page.content = '<a href="%s">link</a>' % macro(item)
+>>> page.save()
+>>> page.content
+'<a href="{@ example.models.Item 1 @}">link</a>'
 
->>> MACRO_RE.sub(MACRO_REPL, '<a href="{@ example.models.Page 1 @}">Page</a>')
-'<a href="/page_by_id/1">Page</a>'
+# Request content with link to the object
+>>> client.get('/page_by_id/1').content
+'<a href="/item_by_barcode/first">link</a>'
 
->>> MACRO_RE.sub(MACRO_REPL, '<a href="{@ example.models.DoesNotExists 1 @}">Page</a>') 
-'<a href="">Page</a>'
+# Change the object
+>>> item.barcode = 'changed'
+>>> item.save()
+>>> item.my_url()
+'/item_by_barcode/changed'
 
->>> MACRO_RE.sub(MACRO_REPL, '<a href="{@ 1 @}">Page</a>') 
-'<a href="{@ 1 @}">Page</a>'
+# Request content with new link to the object
+>>> client.get('/page_by_id/1').content
+'<a href="/item_by_barcode/changed">link</a>'
 
->>> MACRO_RE.sub(MACRO_REPL, '<a href="{@ example-models-Page 1 @}">Page</a>')
-'<a href="{@ example-models-Page 1 @}">Page</a>'
+# It is safe
+>>> page.content = '<a href="{@ example.models.Item.objects.delete 1 @}">link</a>'
+>>> page.save()
+>>> client.get('/page_by_id/1').content
+'<a href="">link</a>'
 
->>> (MACRO_RE.sub(MACRO_REPL, u'<a href="{@ example.models.Page 1 @}">\u00a0</a>') ==
-... u'<a href="/page_by_id/1">\u00a0</a>')
-True
-
+# It takes only macros
+>>> page.content = '<a href="{@ link @}">link</a>'
+>>> page.save()
+>>> client.get('/page_by_id/1').content
+'<a href="{@ link @}">link</a>'
 """
 
-import re
-from modelurl.importpath import importpath
-from django.utils.safestring import mark_safe
-from django.conf import settings
-
-MACRO_RE = re.compile(r'{@\s*([.a-zA-Z]+)\s*(\S+)\s*@}')
-
-def MACRO_REPL(match):
-    model, pk = match.groups()
-    for setting in getattr(settings, 'MODELURL_MODELS', []):
-        if model == setting.get('model', ''):
-            function = setting.get('function', 'get_absolute_url')
-            break
-    else:
-        return mark_safe('')
-    model = importpath(model)
-    try:
-        obj = model.objects.get(pk=pk)
-    except model.DoesNotExist:
-        return mark_safe('')
-    if not function:
-        function = 'get_absolute_url'
-    url = getattr(obj, function)()
-    return mark_safe(url.encode('utf-8'))
+from modelurl.utils import MACRO_RE, MACRO_REPL
 
 class ModelUrlMiddleware(object):
     def process_response(self, request, response):

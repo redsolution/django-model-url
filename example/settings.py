@@ -44,15 +44,16 @@ MODELURL_MODELS = [
 
 MODELURL_VIEWS = [
     {
-        'view': 'views.page_by_id',
+        'view': 'example.views.page_by_id',
         'context': 'page',
     },
     {
-        'view': 'views.item_by_id',
+        'view': 'example.views.item_by_id',
         'context': 'item',
+        'remove_query': True,
     },
     {
-        'view': 'views.item_by_barcode',
+        'view': 'example.views.item_by_barcode',
         'context': 'item',
     },
 ]
