@@ -30,6 +30,7 @@ class Test(TestCase):
         self.assertEqual(client.get('/doesnotexists').status_code, 404)
         self.assertEqual(client.get('/page_by_id/1').content, 'page')
         self.assertEqual(client.get('/page_by_id/2').status_code, 404)
+        self.assertEqual(client.get('/page_by_id/11').content, 'eleven')
         self.assertEqual(client.get('/page_by_id/string').status_code, 404)
         self.assertEqual(client.get('/item_by_id/1').content, 'first')
         self.assertEqual(client.get('/item_by_id/2').content, 'second')
