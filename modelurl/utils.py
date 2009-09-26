@@ -91,13 +91,19 @@ class ReplaceException(Exception):
 
 class DoesNotFoundException(ReplaceException):
     """
-    Specified url was not found.
+    Specified that url was not found.
+    """
+    pass
+
+class UnregisteredException(ReplaceException):
+    """
+    Specified that url exists but wasn`t registered in MODELURL_VIEWS.
     """
     pass
 
 class AlreadyMacroException(ReplaceException):
     """
-    Specified url already is macro.
+    Specified that url already is macro.
     """
     pass
 
@@ -469,7 +475,7 @@ class ReplaceByView(BaseReplace):
         try:
             setting = self.views[callback]
         except KeyError:
-            raise DoesNotFoundException
+            raise UnregisteredException
         obj = object_from_view(path, query, setting['context'])
         path = macro(obj)
         if setting.get('remove_query', False):
