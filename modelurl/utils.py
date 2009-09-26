@@ -12,7 +12,7 @@ from django.core.urlresolvers import RegexURLResolver
 from django.template import NodeList
 from django.utils.safestring import mark_safe
 
-from urlmethods import urlsplit, urljoin, local_response_unthreaded
+from urlmethods import urlsplit, urljoin, local_response_unthreaded, local_check
 from urlmethods.threadmethod import threadmethod
 
 from importpath import importpath
@@ -414,16 +414,6 @@ class ReplaceByView(BaseReplace):
         ...
     DoesNotFoundException
 
-    >>> replace.url('/notfound')
-    Traceback (most recent call last):
-        ...
-    DoesNotFoundException
-
-    >>> replace.url('/response')
-    Traceback (most recent call last):
-        ...
-    DoesNotFoundException
-
     >>> replace.url('/page_by_id/1#anchor')
     u'{@ example.models.Page 1 @}#anchor'
 
@@ -445,17 +435,60 @@ class ReplaceByView(BaseReplace):
     
     >>> replace.url('/item_by_id/2')
     u'{@ example.models.Item 2 @}'
+    
+    >>> replace.url('/unavailable')
+    Traceback (most recent call last):
+        ...
+    DoesNotFoundException
+
+    >>> replace.url('/notfound')
+    Traceback (most recent call last):
+        ...
+    DoesNotFoundException
+
+    >>> replace.url('/response')
+    Traceback (most recent call last):
+        ...
+    UnregisteredException
+
+    >>> replace = ReplaceByView(check_unregistered=False)
+    
+    >>> replace.url('/unavailable')
+    Traceback (most recent call last):
+        ...
+    DoesNotFoundException
+
+    >>> replace.url('/notfound')
+    Traceback (most recent call last):
+        ...
+    UnregisteredException
+
+    >>> replace.url('/response')
+    Traceback (most recent call last):
+        ...
+    UnregisteredException
     """
     
     def __init__(self, check_sites=[], check_schemes=['http', ],
-        send_query=False, *args, **kwargs):
+        check_unregistered=True, *args, **kwargs):
+        """
+        ``check_sites`` is list of site-names that are served by this server.
+        Urls with such site name will be checked.
+        
+        ``check_schemes`` is list of schemes that are served by this server.
+        Only urls with such scheme will be checked.
+        
+        ``check_unregistered`` indicates that unregistered views must be checked.
+        If ``check_unregistered`` is True and view will not response
+        function will raise DoesNotFoundException instead of UnregisteredException.
+        """
         super(ReplaceByView, self).__init__(*args, **kwargs)
         self.views = {}
         for setting in getattr(settings, 'MODELURL_VIEWS', []):
             self.views[importpath(setting['view'])] = setting
         self.check_sites = [value.lower() for value in check_sites]
         self.check_schemes = [value.lower() for value in check_schemes]
-        self.send_query = send_query
+        self.check_unregistered = check_unregistered
 
     @silentmethod
     def url(self, value):
@@ -475,6 +508,9 @@ class ReplaceByView(BaseReplace):
         try:
             setting = self.views[callback]
         except KeyError:
+            if self.check_unregistered:
+                if not local_check(path, query):
+                    raise DoesNotFoundException
             raise UnregisteredException
         obj = object_from_view(path, query, setting['context'])
         path = macro(obj)
