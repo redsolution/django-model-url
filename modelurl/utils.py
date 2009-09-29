@@ -512,6 +512,8 @@ class ReplaceByView(BaseReplace):
                 if not local_check(path, query):
                     raise DoesNotFoundException
             raise UnregisteredException
+        if setting.get('disable', False):
+            raise DoesNotFoundException
         obj = object_from_view(path, query, setting['context'])
         path = macro(obj)
         if setting.get('remove_query', False):
