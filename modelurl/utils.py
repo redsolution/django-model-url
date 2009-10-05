@@ -127,11 +127,12 @@ class BaseReplace(object):
     
     def __init__(self, silent=False):
         """
-        If ``silent`` is True then instance of this class must
+        If ``silent`` is False then instance of this class must
         raise exceptions when urls can`t be replaces with macro.
         
-        If ``silent`` is False then instance of this class must
+        If ``silent`` is True then instance of this class must
         return source value.
+        If DoesNotFoundException was raised empty string will be returned.
         """
         self.silent = silent
 
@@ -143,6 +144,11 @@ def silentmethod(func):
     def wrapper(self, value, *args, **kwargs):
         try:
             return func(self, value, *args, **kwargs)
+        except DoesNotFoundException, exception:
+            if self.silent:
+                return ''
+            else:
+                raise exception
         except ReplaceException, exception:
             if self.silent:
                 return value
@@ -467,6 +473,17 @@ class ReplaceByView(BaseReplace):
     Traceback (most recent call last):
         ...
     UnregisteredException
+
+    >>> replace = ReplaceByView(silent=True)
+    
+    >>> replace.url('/page_by_id/11')
+    u'{@ example.models.Page 11 @}'
+
+    >>> replace.url('/page_by_id/12')
+    ''
+
+    >>> replace.url('http://another.com/page_by_id/1')
+    'http://another.com/page_by_id/1'
     """
     
     def __init__(self, check_sites=[], check_schemes=['http', ],
