@@ -40,4 +40,47 @@ INSTALLED_APPS = (
     'modelurl',
 )
 ...
+MODELURL_MODELS = [
+    {
+        'model': 'myapp.models.MyModel',
+    },
+]
+MODELURL_VIEWS = [
+    {
+        'view': 'django.contrib.admin.site.root',
+        'disable': True,
+    },
+    {
+        'view': 'myapp.views.get',
+        'context': 'object',
+    },
+]
+...
+</pre>
+
+
+h2. myapp/models.py
+
+<pre>
+from modelurl.utils import ReplaceByView
+
+class MyModel(models.Model):
+    url = models.CharField(max_length=200)
+    ...
+    def save(self, *args, **kwargs):
+        url = ReplaceByView(silent=True).url(url)
+        super(MyModel, self).save(*args, **kwargs)
+</pre>
+
+h2. Using with django-trusted-html
+
+<pre>
+from trustedhtml.signals import rule_done
+from trustedhtml.classes import Uri
+from modelurl.utils import ReplaceByView
+
+def url_done(sender, rule, value, source, **kwargs):
+    return ReplaceByView(silent=True).url(value)
+
+rule_done.connect(url_done, sender=Uri)
 </pre>
