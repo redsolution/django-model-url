@@ -442,6 +442,11 @@ class ReplaceByView(BaseReplace):
     >>> replace.url('/item_by_id/2')
     u'{@ example.models.Item 2 @}'
     
+    >>> replace.url('/item_by_id/12')
+    Traceback (most recent call last):
+        ...
+    DoesNotFoundException
+    
     >>> replace.url('/unavailable')
     Traceback (most recent call last):
         ...
@@ -510,7 +515,10 @@ class ReplaceByView(BaseReplace):
     @silentmethod
     def url(self, value):
         if MACRO_RE.match(value):
-            raise AlreadyMacroException
+            if MACRO_RE.sub(MACRO_REPL, value):
+                raise AlreadyMacroException
+            else:
+                raise DoesNotFoundException
         scheme, authority, path, query, fragment = urlsplit(value)
         if not scheme and not authority and not path:
             raise NoPathException
