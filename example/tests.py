@@ -3,7 +3,7 @@ from models import Page, Item
 
 class Test(TestCase):
     fixtures = ['example.json']
-     
+
     def setUp(self):
         pass
 
@@ -12,6 +12,10 @@ class Test(TestCase):
         item = Item.objects.get(pk=1)
         self.assertEqual(page.get_absolute_url(), '/page_by_id/1')
         self.assertEqual(item.my_url(), '/item_by_barcode/first')
+        self.assertEqual(Page.objects.get(pk=1).content, 'page')
+        self.assertEqual(Page.objects.get(pk=11).content, 'eleven')
+        self.assertEqual(Item.objects.get(pk=1).barcode, 'first')
+        self.assertEqual(Item.objects.get(pk=2).barcode, 'second')
 
     def test_views(self):
         client = Client()
@@ -21,6 +25,10 @@ class Test(TestCase):
         self.assertEqual(client.get('/redirect_response').status_code, 302)
         self.assertEqual(client.get('/redirect_notfound').status_code, 302)
         self.assertEqual(client.get('/redirect_redirect_response').status_code, 302)
+        self.assertEqual(client.get('/redirect_a_to_redirect_b_cicle').status_code, 302)
+        self.assertEqual(client.get('/redirect_b_to_redirect_a_cicle').status_code, 302)
+        self.assertEqual(client.get('/redirect_page1').status_code, 302)
+        self.assertEqual(client.get('/redirect_page12').status_code, 302)
         self.assertEqual(client.get('/redirect_cicle').status_code, 302)
         self.assertEqual(client.get('/permanent_redirect_response').status_code, 301)
         self.assertEqual(client.get('/http404').status_code, 404)
@@ -39,6 +47,6 @@ class Test(TestCase):
         self.assertEqual(client.get('/item_by_barcode/first').content, 'first')
         self.assertEqual(client.get('/item_by_barcode/second').content, 'second')
         self.assertEqual(client.get('/item_by_barcode/string').status_code, 404)
-        
+
     def tearDown(self):
         pass

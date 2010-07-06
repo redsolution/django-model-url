@@ -15,7 +15,7 @@ def error(request):
 
 def redirect_response(request):
     return HttpResponseRedirect(reverse('response'))
-    
+
 def redirect_notfound(request):
     return HttpResponseRedirect(reverse('notfound'))
 
@@ -25,9 +25,21 @@ def redirect_redirect_response(request):
 def redirect_cicle(request):
     return HttpResponseRedirect(reverse('redirect_cicle'))
 
+def redirect_a_to_redirect_b_cicle(request):
+    return HttpResponseRedirect(reverse('redirect_b_to_redirect_a_cicle'))
+
+def redirect_b_to_redirect_a_cicle(request):
+    return HttpResponseRedirect(reverse('redirect_a_to_redirect_b_cicle'))
+
+def redirect_page1(request):
+    return HttpResponseRedirect(reverse('page_by_id', args=['1']))
+
+def redirect_page12(request):
+    return HttpResponseRedirect(reverse('page_by_id', args=['12']))
+
 def permanent_redirect_response(request):
     return HttpResponsePermanentRedirect(reverse('response'))
-    
+
 def http404(request):
     raise Http404
 

@@ -7,12 +7,11 @@ import re
 import threading
 
 from django.conf import settings
-from django.contrib.sites.models import Site
 from django.core.urlresolvers import RegexURLResolver
 from django.template import NodeList
 from django.utils.safestring import mark_safe
 
-from urlmethods import urlsplit, urljoin, local_response_unthreaded, local_check
+from urlmethods import urlsplit, urljoin, local_response_unthreaded
 from urlmethods.threadmethod import threadmethod
 
 from importpath import importpath
@@ -83,81 +82,25 @@ def macro(obj):
     """
     return '{@ %s.%s %s @}' % (obj.__class__.__module__, obj.__class__.__name__, obj.pk)
 
-class ReplaceException(Exception):
+class ReplaceFailed(Exception):
     """
-    Base exception class.
+    Specified url can not be received.
     """
-    pass
 
-class DoesNotFoundException(ReplaceException):
+class ReplaceDone(Exception):
     """
-    Specified that url was not found.
+    Specified url can not be transformed anymore.
     """
-    pass
 
-class UnregisteredException(ReplaceException):
+class ReplaceRedirect(Exception):
     """
-    Specified that url exists but wasn`t registered in MODELURL_VIEWS.
+    Redirect was found.
     """
-    pass
-
-class AlreadyMacroException(ReplaceException):
-    """
-    Specified that url already is macro.
-    """
-    pass
-
-class NoPathException(ReplaceException):
-    """
-    Url has no path (only anchor or/and query).
-    """
-    pass
-
-class ForeignException(ReplaceException):
-    """
-    Url has link to the foreign site.
-    """
-    pass
+    def __init__(self, target):
+        self.target = target
 
 
-class BaseReplace(object):
-    """
-    Base class to replace urls.
-    """
-    
-    def __init__(self, silent=False):
-        """
-        If ``silent`` is False then instance of this class must
-        raise exceptions when urls can`t be replaces with macro.
-        
-        If ``silent`` is True then instance of this class must
-        return source value.
-        If DoesNotFoundException was raised empty string will be returned.
-        """
-        self.silent = silent
-
-
-def silentmethod(func):
-    """
-    Decorator to make function silent if specified
-    """
-    def wrapper(self, value, *args, **kwargs):
-        try:
-            return func(self, value, *args, **kwargs)
-        except DoesNotFoundException, exception:
-            if self.silent:
-                return ''
-            else:
-                raise exception
-        except ReplaceException, exception:
-            if self.silent:
-                return value
-            else:
-                raise exception
-    return wrapper
-
-
-class ReplaceByDict(BaseReplace):
+class ReplaceByDict(object):
     """
     Replace urls with macros using dictionary.
     
@@ -179,19 +122,13 @@ class ReplaceByDict(BaseReplace):
     '{@ example.models.Page 11 @}'
 
     >>> replace.url('/page_by_id/12')
-    Traceback (most recent call last):
-        ...
-    DoesNotFoundException
+    u''
 
     >>> replace.url('/page_by_id/1/')
-    Traceback (most recent call last):
-        ...
-    DoesNotFoundException
+    u''
 
     >>> replace.url('/page_by_id/1?query')
-    Traceback (most recent call last):
-        ...
-    DoesNotFoundException
+    u''
 
     >>> replace.text('<a href="/page_by_id/1">page</a> and /page_by_id/1 ')
     '<a href="{@ example.models.Page 1 @}">page</a> and {@ example.models.Page 1 @} '
@@ -226,7 +163,7 @@ class ReplaceByDict(BaseReplace):
         self._dct = None
         self._lst = None
         self._regexp = None
-    
+
     @property
     def dct(self):
         if self._dct is None:
@@ -251,13 +188,12 @@ class ReplaceByDict(BaseReplace):
         Return regexp for all urls.
         """
         if self._regexp is None:
-            self._regexp = re.compile(r'''(%s)(?=\s|[#?"'>]|$)''' % 
+            self._regexp = re.compile(r'''(%s)(?=\s|[#?"'>]|$)''' %
                 '|'.join(['(%s)' % re.escape(key)
                     for key, value in self.lst]),
                 re.IGNORECASE)
         return self._regexp
 
-    @silentmethod
     def url(self, value):
         """
         Return macro for specified ``value``.
@@ -266,8 +202,8 @@ class ReplaceByDict(BaseReplace):
         try:
             return self.dct[value.lower()]
         except KeyError:
-            raise DoesNotFoundException
-    
+            return u''
+
     def text(self, value):
         """
         Replace urls in ``text`` with macros.
@@ -375,7 +311,7 @@ def render(func):
                 pass
         return func(self, context)
     return wrapper
-    
+
 # Create lock to update NodeList only once
 lock = threading.Lock()
 lock.acquire()
@@ -392,21 +328,34 @@ lock.release()
 def object_from_view(path, query, object_name):
     local.modelurl_object_name = object_name
     try:
-        response = local_response_unthreaded(path, query)
-        if response.status_code != 200:
-            raise DoesNotFoundException
+        response = local_response_unthreaded(path, query, False)
     except:
-        raise DoesNotFoundException
+        raise ReplaceFailed
+    if response.status_code in [301, 302]:
+        raise ReplaceRedirect(response['Location'])
+    if response.status_code != 200:
+        raise ReplaceFailed
     try:
         return local.modelurl_object
     except AttributeError:
-        raise DoesNotFoundException
+        raise ReplaceDone
 
-class ReplaceByView(BaseReplace):
+@threadmethod()
+def data_from_view(path, query):
+    try:
+        response = local_response_unthreaded(path, query, False)
+    except:
+        raise ReplaceFailed
+    if response.status_code in [301, 302]:
+        raise ReplaceRedirect(response['Location'])
+    if response.status_code != 200:
+        raise ReplaceFailed
+
+class ReplaceByView(object):
     """
     Replace urls with macros using calling of view for specified url 
     and retrieve object from context.
-    
+
     >>> replace = ReplaceByView()
     
     >>> replace.url('/page_by_id/1')
@@ -416,9 +365,7 @@ class ReplaceByView(BaseReplace):
     u'{@ example.models.Page 11 @}'
 
     >>> replace.url('/page_by_id/12')
-    Traceback (most recent call last):
-        ...
-    DoesNotFoundException
+    u''
 
     >>> replace.url('/page_by_id/1#anchor')
     u'{@ example.models.Page 1 @}#anchor'
@@ -427,15 +374,11 @@ class ReplaceByView(BaseReplace):
     u'{@ example.models.Page 1 @}?query'
 
     >>> replace.url('/page_by_id/1/')
-    Traceback (most recent call last):
-        ...
-    DoesNotFoundException
+    u''
 
     >>> replace.url('http://another.com/page_by_id/1')
-    Traceback (most recent call last):
-        ...
-    ForeignException
-    
+    'http://another.com/page_by_id/1'
+
     >>> replace.url('/item_by_barcode/second')
     u'{@ example.models.Item 2 @}'
     
@@ -443,54 +386,53 @@ class ReplaceByView(BaseReplace):
     u'{@ example.models.Item 2 @}'
     
     >>> replace.url('/item_by_id/12')
-    Traceback (most recent call last):
-        ...
-    DoesNotFoundException
+    u''
     
     >>> replace.url('/unavailable')
-    Traceback (most recent call last):
-        ...
-    DoesNotFoundException
+    u''
 
     >>> replace.url('/notfound')
-    Traceback (most recent call last):
-        ...
-    DoesNotFoundException
+    u''
 
     >>> replace.url('/response')
-    Traceback (most recent call last):
-        ...
-    UnregisteredException
+    '/response'
 
+    >>> replace.url('/redirect_response')
+    u'/response'
+    
+    >>> replace.url('/redirect_notfound')
+    u''
+    
+    >>> replace.url('/redirect_redirect_response')
+    u'/response'
+    
+    >>> replace.url('/redirect_cicle')
+    u''
+    
+    >>> replace.url('/redirect_a_to_redirect_b_cicle')
+    u''
+    
+    >>> replace.url('/redirect_page1')
+    u'{@ example.models.Page 1 @}'
+    
+    >>> replace.url('/redirect_page12')
+    u''
+    
     >>> replace = ReplaceByView(check_unregistered=False)
     
     >>> replace.url('/unavailable')
-    Traceback (most recent call last):
-        ...
-    DoesNotFoundException
+    u''
 
     >>> replace.url('/notfound')
-    Traceback (most recent call last):
-        ...
-    UnregisteredException
+    '/notfound'
 
     >>> replace.url('/response')
-    Traceback (most recent call last):
-        ...
-    UnregisteredException
-
-    >>> replace = ReplaceByView(silent=True)
-    
-    >>> replace.url('/page_by_id/11')
-    u'{@ example.models.Page 11 @}'
-
-    >>> replace.url('/page_by_id/12')
-    ''
+    '/response'
 
     >>> replace.url('http://another.com/page_by_id/1')
     'http://another.com/page_by_id/1'
     """
-    
+
     def __init__(self, check_sites=[], check_schemes=['http', ],
         check_unregistered=True, *args, **kwargs):
         """
@@ -502,7 +444,7 @@ class ReplaceByView(BaseReplace):
         
         ``check_unregistered`` indicates that unregistered views must be checked.
         If ``check_unregistered`` is True and view will not response
-        function will raise DoesNotFoundException instead of UnregisteredException.
+        function will return ''
         """
         super(ReplaceByView, self).__init__(*args, **kwargs)
         self.views = {}
@@ -512,36 +454,54 @@ class ReplaceByView(BaseReplace):
         self.check_schemes = [value.lower() for value in check_schemes]
         self.check_unregistered = check_unregistered
 
-    @silentmethod
     def url(self, value):
-        if MACRO_RE.match(value):
-            if MACRO_RE.sub(MACRO_REPL, value):
-                raise AlreadyMacroException
-            else:
-                raise DoesNotFoundException
-        scheme, authority, path, query, fragment = urlsplit(value)
-        if not scheme and not authority and not path:
-            raise NoPathException
-        if (scheme and scheme.lower() not in self.check_schemes) or\
-            (authority and authority.lower() not in self.check_sites):
-            raise ForeignException
+        """
+        Return valid url or empty string.
+        """
         resolver = RegexURLResolver(r'^/', settings.ROOT_URLCONF)
+        checked = []
         try:
-            callback, callback_args, callback_kwargs = resolver.resolve(path)
-        except Exception:
-            raise DoesNotFoundException
-        try:
-            setting = self.views[callback]
-        except KeyError:
-            if self.check_unregistered:
-                if not local_check(path, query):
-                    raise DoesNotFoundException
-            raise UnregisteredException
-        if setting.get('disable', False):
-            raise DoesNotFoundException
-        obj = object_from_view(path, query, setting['context'])
-        path = macro(obj)
-        if setting.get('remove_query', False):
-            query = None
-        value = urljoin(None, None, path, query, fragment)
+            while value not in checked:
+                checked.append(value)
+                if MACRO_RE.match(value):
+                    if MACRO_RE.sub(MACRO_REPL, value):
+                        raise ReplaceDone
+                    else:
+                        raise ReplaceFailed
+                scheme, authority, path, query, fragment = urlsplit(value)
+                if not scheme and not authority and not path:
+                    raise ReplaceDone
+                if (scheme and scheme.lower() not in self.check_schemes) or\
+                    (authority and authority.lower() not in self.check_sites):
+                    raise ReplaceDone
+                try:
+                    callback, callback_args, callback_kwargs = resolver.resolve(path)
+                except Exception:
+                    raise ReplaceFailed
+                try:
+                    try:
+                        setting = self.views[callback]
+                    except KeyError:
+                        if self.check_unregistered:
+                            data_from_view(path, query)
+                        raise ReplaceDone
+                    if setting.get('disable', False):
+                        raise ReplaceFailed
+                    obj = object_from_view(path, query, setting['context'])
+                    path = macro(obj)
+                    if setting.get('remove_query', False):
+                        query = None
+                    value = urljoin(None, None, path, query, fragment)
+                    raise ReplaceDone
+                except ReplaceRedirect, redirect:
+                    value = redirect.target
+                    scheme, authority, path, query, fragment = urlsplit(value)
+                    if scheme == 'http' and authority == 'testserver':
+                        value = urljoin(None, None, path, query, fragment)
+            else:
+                raise ReplaceFailed
+        except ReplaceFailed:
+            return u''
+        except ReplaceDone:
+            pass
         return value
