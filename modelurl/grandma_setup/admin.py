@@ -1,17 +1,17 @@
 from django.contrib import admin
-from config.grandma_setup.models import ConfigSettings, ConfigSite, ConfigRedirect
+from modelurl.grandma_setup.models import ModelUrlSettings, ModelUrlModel, ModelUrlView
 
-class ConfigSiteInline(admin.TabularInline):
-    model = ConfigSite
+class ModelUrlModelInline(admin.TabularInline):
+    model = ModelUrlModel
 
-class ConfigRedirectInline(admin.TabularInline):
-    model = ConfigRedirect
+class ModelUrlViewInline(admin.TabularInline):
+    model = ModelUrlView
 
-class GrandmaApplicationForm(admin.ModelAdmin):
-    model = ConfigSettings
-    inlines = [ConfigSiteInline, ConfigRedirectInline]
+class ModelUrlForm(admin.ModelAdmin):
+    model = ModelUrlSettings
+    inlines = [ModelUrlModelInline, ModelUrlViewInline]
 
 try:
-    admin.site.register(ConfigSettings, GrandmaApplicationForm)
+    admin.site.register(ModelUrlSettings, ModelUrlForm)
 except admin.sites.AlreadyRegistered:
     pass
