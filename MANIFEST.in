@@ -1,0 +1,3 @@
+recursive-include modelurl *.py
+recursive-include modelurl *.html
+recursive-include modelurl *.json
