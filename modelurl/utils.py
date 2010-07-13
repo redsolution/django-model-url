@@ -20,6 +20,22 @@ local = threading.local()
 
 MACRO_RE = re.compile(r'{@\s*([.a-zA-Z]+)\s+(\S+)\s*@}')
 
+CHECK_ELEMENTS = {
+    'a': ['href', ],
+    'area': ['href', ],
+    'blockquote': ['cite', ],
+    'del': ['cite', ],
+    'img': ['src', 'longdesc', 'usemap', ],
+    'ins': ['cite', ],
+    'input': ['src', 'usemap', ],
+    'form': ['action', ],
+    'frame': ['src', 'longdesc', ],
+    'iframe': ['src', 'longdesc', ],
+    'link': ['href', ],
+    'object': ['classid', 'codebase', 'data', 'usemap', ],
+    'q': ['cite', ],
+}
+
 def MACRO_REPL(match):
     """
     Replace function for macro.
@@ -431,6 +447,9 @@ class ReplaceByView(object):
 
     >>> replace.url('http://another.com/page_by_id/1')
     'http://another.com/page_by_id/1'
+
+    >>> replace.html('<div>/page_by_id/1</div><a href="/page_by_id/1"><img src="/redirect_page1" /></a><a href="/unavailable"><a href="/response">inner</a></a>')
+    u'<div>/page_by_id/1</div><a href="{@ example.models.Page 1 @}"><img src="{@ example.models.Page 1 @}" /></a><a href=""></a><a href="/response">inner</a>'
     """
 
     def __init__(self, check_sites=[], check_schemes=['http', ],
@@ -505,3 +524,18 @@ class ReplaceByView(object):
         except ReplaceDone:
             pass
         return value
+
+    def html(self, value):
+        """
+        Return html with valid urls.
+        """
+        from BeautifulSoup import BeautifulSoup
+        soup = BeautifulSoup(value)
+        for element, attrs in CHECK_ELEMENTS.iteritems():
+            for tag in soup.findAll(element):
+                for attr in attrs:
+                    try:
+                        tag[attr] = self.url(tag[attr])
+                    except KeyError:
+                        pass
+        return unicode(soup)
