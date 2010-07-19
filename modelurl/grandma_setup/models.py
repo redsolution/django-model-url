@@ -12,6 +12,6 @@ class ModelUrlModel(models.Model):
     model = models.CharField(verbose_name=_('Mode'), max_length=255)
 
 class ModelUrlView(models.Model):
-    settings = models.ForeignKey(ModelUrlSettings, related_name='models')
+    settings = models.ForeignKey(ModelUrlSettings, related_name='views')
     view = models.CharField(verbose_name=_('View'), max_length=255)
     object = models.CharField(verbose_name=_('Object'), max_length=255)
