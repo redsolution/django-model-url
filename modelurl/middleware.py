@@ -45,9 +45,14 @@ Replace macro in response with absolute urls.
 '<a href="{@ link @}">link</a>'
 """
 
+from django.conf import settings
 from modelurl.utils import MACRO_RE, MACRO_REPL
 
 class ModelUrlMiddleware(object):
     def process_response(self, request, response):
+        if 'content-type' in response._headers:
+            if response._headers.get('content-type', [])[1:1] != ["%s; charset=%s" % (
+                settings.DEFAULT_CONTENT_TYPE, settings.DEFAULT_CHARSET)]:
+                return response
         response.content = MACRO_RE.sub(MACRO_REPL, response.content)
         return response
