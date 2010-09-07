@@ -1,5 +1,5 @@
 from django.contrib import admin
-from modelurl.grandma_setup.models import ModelUrlSettings, ModelUrlModel, ModelUrlView
+from modelurl.redsolution_setup.models import ModelUrlSettings, ModelUrlModel, ModelUrlView
 
 class ModelUrlModelInline(admin.TabularInline):
     model = ModelUrlModel
