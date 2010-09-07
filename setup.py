@@ -10,10 +10,10 @@ def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
 setup(
-    name="grandma.django-model-url",
+    name="redsolutioncms.django-model-url",
     version="0.1.0",
     description=("Django model url" +
-        " with GrandmaCMS integration"),
+        " with RedsolutionCMS integration"),
     license="LGPL",
     keywords="django model url",
 
@@ -26,14 +26,16 @@ setup(
     url="http://packages.python.org/django-model-url",
     classifiers=[
         'Development Status :: 3 - Alpha',
-        'Framework :: Buildout',
         'Intended Audience :: Developers',
         'License :: Freely Distributable',
+        'Framework :: Django',
+        'Environment :: Web Environment',
         'Natural Language :: Russian',
-        'Operating System :: Microsoft :: Windows',
-        'Operating System :: Unix',
-        'Programming Language :: Python :: 2.5',
-        'Topic :: Software Development :: Version Control',
+        'Natural Language :: English',
+        'Operating System :: OS Independent',
+        'Programming Language :: Python',
+        'Topic :: Internet :: WWW/HTTP :: Site Management',
+        'Topic :: Internet :: WWW/HTTP :: Site Management :: Link Checking',
     ],
     packages=find_packages(),
     install_requires=[],
@@ -41,6 +43,6 @@ setup(
     zip_safe=False,
     long_description=open('README').read(),
     entry_points={
-        'grandma_setup': ['modelurl = modelurl.grandma_setup', ],
+        'redsolutioncms': ['modelurl = modelurl.redsolution_setup', ],
     }
 )
