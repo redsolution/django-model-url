@@ -11,3 +11,6 @@ class Make(BaseMake):
         cms_settings.render_to('settings.py', 'modelurl/redsolutioncms/settings.pyt', {
             'modelurl_settings': modelurl_settings,
         })
+
+make = Make()
+
