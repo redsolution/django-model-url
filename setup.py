@@ -12,7 +12,7 @@ def read(fname):
 setup(
     name="redsolutioncms.django-model-url",
     version="0.1.0",
-    description=("Django model url" +
+    description=("Tool to provide recent urls for your movable objects from any stored html" +
         " with RedsolutionCMS integration"),
     license="LGPL",
     keywords="django model url",
@@ -38,7 +38,7 @@ setup(
         'Topic :: Internet :: WWW/HTTP :: Site Management :: Link Checking',
     ],
     packages=find_packages(),
-    install_requires=[],
+    install_requires=['django-url-methods==0.1.0'],
     include_package_data=True,
     zip_safe=False,
     long_description=open('README').read(),
