@@ -37,7 +37,7 @@ setup(
         'Topic :: Internet :: WWW/HTTP :: Site Management',
         'Topic :: Internet :: WWW/HTTP :: Site Management :: Link Checking',
     ],
-    packages=find_packages(),
+    packages=find_packages(exclude=['example', 'example.*']),
     install_requires=['django-url-methods==0.1.0'],
     include_package_data=True,
     zip_safe=False,
