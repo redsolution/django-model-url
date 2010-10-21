@@ -2,21 +2,22 @@
 django-model-url
 ================
 
-Django-model-url help you to show always correctly links to all pages even if page`s url was changed.
+Django-model-url helps you to show correctly links to all objects even if page`s url was changed.
 
-Why do you need it?
--------------------
+Usage case
+----------
 
-Imaging that you have news page on your web site. You add a lot of links to this news from other pages.
-But suddenly you need to change url to for this news page. No your must rewrite a lot of content to fix broken links.
-
-That`s while you will need to use django-model-url.
+For example, you have news page on your web site.
+You add a lot of links to the news page from other pages.
+At some time you had to change url for the news page. This action lead to the problem: all old links are broken now.
+Of course, you can add redirect from old address to new. This can application solve problem more elegantly.
 
 How it works?
 -------------
 
-Before save url to your database django-model-url try to replace it with something like this ``{@ myapp.models.MyModel id @}``.
-To make this django-model-url will search for view that present specified url, call it and look for object in context passed to template.
+Before you save content with hyperlink to your database ``django-model-url`` tries to replace it with something like this ``{@ myapp.models.MyModel id @}``.
+Module will search for controller (view) that presents specified url.
+If controller will be found module  calls it and looks for object in context that passed to template.
 
 When ever such "macro-url" will appear in response it will be replaced with actual url.
 
@@ -30,7 +31,7 @@ In settings.py:
 
 2. Add ``'modelurl.middleware.ModelUrlMiddleware'`` to the end of ``MIDDLEWARE_CLASSES``.
 
-3. Write list of available models to be used by django-model-url::
+3. Configure the list of available models to be used by django-model-url ::
 
     MODELURL_MODELS = [
         {
@@ -39,8 +40,8 @@ In settings.py:
         ...
     ]
 
-4. Write list of views that return objects of specified models.
-To make possible to get object, you must specify name of your object in context passed to render template::
+4. Configure the list of views that return objects of specified models.
+You must also specify the name of your context variable that represents your object ::
 
     MODELURL_VIEWS = [
         {
@@ -49,7 +50,7 @@ To make possible to get object, you must specify name of your object in context 
         },
     ]
 
-You can also disable view if you don`t want to work with it:
+You can disable view if you don`t want to work with it: ::
 
     MODELURL_VIEWS = [
         {
@@ -65,7 +66,7 @@ Usage:
 In your models:
 ---------------
 
-1. You can check single url before it will be saved::  
+1. You can check single url by hands before saving ::  
 
 	from modelurl.utils import ReplaceByView
 	
@@ -75,7 +76,7 @@ In your models:
 	        self.url = ReplaceByView().url(self.url)
 	        super(MyModel, self).save(*args, **kwargs)
 
-2. You can check html before it will be saved::
+2. You can check html before saving ::
 
 	from modelurl.utils import ReplaceByView
 	
@@ -85,4 +86,12 @@ In your models:
 	        self.html = ReplaceByView().html(self.html)
 	        super(MyModel, self).save(*args, **kwargs)
 
-3. You can use django-model-url together with django-trusted-html to make your html correct, pretty and safe.
+3. You can use django-model-url together with `django-trusted-html`_ to make your html correct, pretty and safe.
+
+Classifiers:
+-------------
+
+`Utilities`_
+
+.. _`django-trusted-html`: http://pypi.python.org/pypi/redsolutioncms.django-trusted-html/
+.. _`Utilities`: http://www.redsolutioncms.org/classifiers/utilities
