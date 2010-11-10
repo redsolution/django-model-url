@@ -16,7 +16,7 @@ setup(
     name="redsolutioncms.django-model-url",
     version=__import__('modelurl').__version__,
     description=read('DESCRIPTION'),
-    license="LGPL",
+    license="GPLv3",
     keywords="django model url",
 
     author="Alexander Ivanov",
